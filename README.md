@@ -33,6 +33,83 @@ npm run dev
 npm run build
 ```
 
+构建完成后，`dist` 文件夹包含可直接运行的文件。
+
+### 📦 发布新版本
+
+本项目使用 **GitHub Releases** 进行版本管理，无需后端服务器：
+
+```bash
+# Windows
+scripts\release.bat 1.1.0 "修复了PWA更新问题"
+
+# Mac/Linux
+./scripts/release.sh 1.1.0 "修复了PWA更新问题"
+```
+
+**⚠️ 首次使用前请配置：**
+
+编辑 `package.json`，修改 `repository.url` 为您的 GitHub 仓库：
+
+```json
+{
+  "repository": {
+    "url": "https://github.com/您的用户名/cashGiftBook.git"
+  }
+}
+```
+
+详细指南：[RELEASE_GUIDE.md](./RELEASE_GUIDE.md) | [快速参考](./RELEASE_QUICK_REF.md) | [配置说明](./GITHUB_REPO_CONFIG.md)
+
+### 🌐 部署到网络（推荐）
+
+**⚠️ Vercel 国内访问问题：**
+- Vercel 在中国大陆经常无法访问（DNS 污染）
+- 不推荐用于面向国内用户的项目
+
+**✅ 推荐方案：**
+
+1. **GitHub Pages**（最推荐）
+   - 国内访问相对稳定
+   - 已配置自动部署工作流
+   - 只需推送到 GitHub 并启用 Pages 功能
+   - 详细指南：[DEPLOYMENT.md](./DEPLOYMENT.md)
+
+2. **Cloudflare Pages**
+   - 国内访问速度较快
+   - 免费且稳定
+   - 支持自动部署
+
+3. **阿里云 OSS + CDN**
+   - 国内访问速度最快
+   - 需要备案域名
+   - 适合企业级应用
+
+查看完整部署指南：[DEPLOYMENT.md](./DEPLOYMENT.md)
+
+### 📱 手机端使用
+
+**方式一：直接打开（简单但有限制）**
+- 将 `dist/index.html` 发送到手机
+- 用手机浏览器打开
+- ⚠️ 限制：无法添加到主屏幕，刷新可能出错
+
+**方式二：本地服务器（推荐家庭使用）**
+```bash
+cd dist
+python -m http.server 8080
+```
+手机访问：`http://电脑IP:8080`
+
+**方式三：部署到网络（最佳体验）**
+- 部署到 Netlify、GitHub Pages 等免费服务
+- 获得 HTTPS 网址
+- ✅ 可以添加到主屏幕，像 App 一样使用
+- ✅ 刷新不会出错
+- ✅ 完整的 PWA 功能
+
+详细指南请查看：[MOBILE_USAGE.md](./MOBILE_USAGE.md)
+
 ### 预览生产版本
 
 ```bash

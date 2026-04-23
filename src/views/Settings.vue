@@ -88,7 +88,17 @@ async function checkUpdate() {
     showToast.clear();
     
     if (info.error) {
-      showToast('当前为离线版本');
+      // 显示手动更新选项
+      showConfirmDialog({
+        title: '离线模式',
+        message: '当前为离线版本，无法检查服务器更新。\n\n是否清除缓存并刷新？',
+        confirmButtonText: '清除缓存',
+        cancelButtonText: '取消'
+      }).then(async () => {
+        await versionAPI.forceUpdate();
+      }).catch(() => {
+        // 用户取消
+      });
       return;
     }
     
