@@ -33,7 +33,7 @@
           <van-field v-model="formData.name" name="name" label="姓名" placeholder="输入真实姓名或称呼（如：舅舅、张三）" clearable
             :rules="[{ required: true, message: '请输入姓名' }]">
             <template #label>
-              <span style="color: #ee0a24">*</span> 姓名
+              姓名
             </template>
           </van-field>
         </van-cell-group>
