@@ -91,6 +91,11 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+      host: "0.0.0.0",
+      hmr: true, // 启用热更新  
+      port: 8080,
+    },
   build: {
     rollupOptions: {
       output: {
