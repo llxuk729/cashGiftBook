@@ -1,5 +1,4 @@
 import db from './index';
-import { getRelationshipLabel } from '../utils/relationship';
 
 // 人物关系相关操作
 export const personAPI = {
@@ -125,53 +124,28 @@ export const personAPI = {
   // 根据关系路径查找人物（用于逻辑推导选择器）
   async getByPath(pathSegments) {
     if (!pathSegments || pathSegments.length === 0) return [];
-
+    
     const allPersons = await this.getAll();
     const targetRelationship = pathSegments[pathSegments.length - 1];
-
-    return allPersons
-      .filter((person) => person.relationship === targetRelationship)
-      .sort((a, b) => new Date(b.createTime) - new Date(a.createTime));
+    
+    // 简单实现：匹配路径结尾或关系类型
+    return allPersons.filter(p => {
+      const pathStr = p.path || '';
+      // 检查路径是否以该关系段落结尾，或者关系类型匹配且处于同一层级（简化处理）
+      return pathStr.endsWith(targetRelationship) || p.relationship === targetRelationship;
+    });
   },
 
   // 获取常用/最近选择的人物（用于快捷入口）
   async getFrequent(limit = 8) {
+    // 暂时简单返回最近创建的8个人物，后续可结合 recordAPI 统计频率
     const allPersons = await this.getAll();
-    const records = await db.records.toArray();
-    const usageMap = new Map();
-
-    records.forEach((record) => {
-      if (record.relationshipId) {
-        usageMap.set(record.relationshipId, (usageMap.get(record.relationshipId) || 0) + 1);
-      }
-    });
-
-    return allPersons
-      .filter((person) => person.relationship !== 'self')
-      .sort((a, b) => {
-        const usageDiff = (usageMap.get(b.id) || 0) - (usageMap.get(a.id) || 0);
-        if (usageDiff !== 0) return usageDiff;
-        return new Date(b.createTime) - new Date(a.createTime);
-      })
-      .slice(0, limit);
+    return allPersons.slice(-limit).reverse();
   },
 
   // 根据关系类型查找人物（用于关系选择器）
   async getByRelationshipType(relationshipType) {
-    const records = await db.records.toArray();
-    const usageMap = new Map();
-    records.forEach((record) => {
-      if (record.relationshipId) {
-        usageMap.set(record.relationshipId, (usageMap.get(record.relationshipId) || 0) + 1);
-      }
-    });
-
-    const persons = await db.persons.where('relationship').equals(relationshipType).toArray();
-    return persons.sort((a, b) => {
-      const usageDiff = (usageMap.get(b.id) || 0) - (usageMap.get(a.id) || 0);
-      if (usageDiff !== 0) return usageDiff;
-      return new Date(b.createTime) - new Date(a.createTime);
-    });
+    return await db.persons.where('relationship').equals(relationshipType).toArray();
   },
 
   // 按家族分支分组（为大家族优化）
@@ -235,6 +209,28 @@ export const personAPI = {
     const lowerKeyword = keyword.toLowerCase().trim();
     
     // 称谓映射表（用于搜索）
+    const titleMap = {
+      '爸爸': 'father', '父亲': 'father', '爸': 'father',
+      '妈妈': 'mother', '母亲': 'mother', '妈': 'mother',
+      '爷爷': 'father_father', '祖父': 'father_father',
+      '奶奶': 'father_mother', '祖母': 'father_mother',
+      '外公': 'mother_father', '姥爷': 'mother_father',
+      '外婆': 'mother_mother', '姥姥': 'mother_mother',
+      '伯父': 'father_older_brother', '伯伯': 'father_older_brother', '大叔': 'father_older_brother',
+      '叔叔': 'father_younger_brother', '叔': 'father_younger_brother',
+      '姑妈': 'father_older_sister', '姑姑': 'father_older_sister', '姑': 'father_older_sister',
+      '舅舅': 'mother_older_brother', '舅': 'mother_older_brother',
+      '姨妈': 'mother_older_sister', '阿姨': 'mother_younger_sister', '姨': 'mother_older_sister',
+      '哥哥': 'older_brother', '哥': 'older_brother',
+      '弟弟': 'younger_brother', '弟': 'younger_brother',
+      '姐姐': 'older_sister', '姐': 'older_sister',
+      '妹妹': 'younger_sister', '妹': 'younger_sister',
+      '儿子': 'son', '子': 'son',
+      '女儿': 'daughter', '女': 'daughter',
+      '侄子': 'older_brother_son', '侄女': 'older_brother_daughter',
+      '外甥': 'older_sister_son', '外甥女': 'older_sister_daughter'
+    };
+    
     return allPersons.filter(person => {
       // 1. 姓名匹配
       if (person.name.toLowerCase().includes(lowerKeyword)) return true;
@@ -242,36 +238,23 @@ export const personAPI = {
       // 2. 路径匹配
       if (person.path && person.path.toLowerCase().includes(lowerKeyword)) return true;
       
-      // 3. 关系标签匹配
-      return getRelationshipLabel(person.relationship).toLowerCase().includes(lowerKeyword);
+      // 3. 关系类型匹配（通过称谓映射）
+      const relationshipKeys = Object.keys(titleMap).filter(key => key.includes(lowerKeyword));
+      if (relationshipKeys.length > 0) {
+        const matchedTypes = relationshipKeys.map(key => titleMap[key]);
+        if (matchedTypes.includes(person.relationship)) return true;
+      }
+      
+      return false;
     }).slice(0, 20); // 限制返回数量
   },
 
   // 获取最近选择的人物（基于记录频率）
   async getRecentSelected(limit = 10) {
+    // 简单实现：返回最近创建的10个人物
     const allPersons = await this.getAll();
-    const records = await db.records.toArray();
-
-    const ids = records
-      .filter((record) => record.relationshipId)
-      .sort((a, b) => new Date(b.createTime || b.date) - new Date(a.createTime || a.date))
-      .map((record) => record.relationshipId);
-
-    const uniqueIds = [...new Set(ids)];
-    const selected = uniqueIds
-      .map((id) => allPersons.find((person) => person.id === id))
-      .filter(Boolean)
-      .slice(0, limit);
-
-    if (selected.length >= limit) {
-      return selected;
-    }
-
-    const fallback = allPersons
-      .filter((person) => person.relationship !== 'self' && !uniqueIds.includes(person.id))
+    return allPersons
       .sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
-      .slice(0, limit - selected.length);
-
-    return [...selected, ...fallback];
+      .slice(0, limit);
   }
 };

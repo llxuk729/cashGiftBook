@@ -46,12 +46,21 @@
         <div class="quick-grid">
           <button
             type="button"
+            class="quick-card quick"
+            @click="showQuickRecord = true"
+          >
+            <span class="quick-icon">⚡</span>
+            <strong>快速记账</strong>
+            <small>3秒完成记录</small>
+          </button>
+          <button
+            type="button"
             class="quick-card primary"
             @click="goToAddRecord"
           >
             <span class="quick-icon">记</span>
             <strong>记一笔</strong>
-            <small>最快进入主流程</small>
+            <small>完整记账流程</small>
           </button>
           <button type="button" class="quick-card" @click="goToQuery">
             <span class="quick-icon">查</span>
@@ -101,6 +110,84 @@
           <p>建议尽快导出一份备份，避免数据丢失。</p>
         </div>
       </van-dialog>
+
+      <!-- 快速记账弹窗 -->
+      <van-popup 
+        v-model:show="showQuickRecord" 
+        position="bottom" 
+        round
+        :style="{ padding: '20px' }"
+      >
+        <div class="quick-record-modal">
+          <div class="modal-header">
+            <h3>快速记账</h3>
+            <van-icon name="cross" @click="showQuickRecord = false" />
+          </div>
+
+          <div class="quick-form">
+            <!-- 金额输入 -->
+            <div class="amount-section">
+              <div class="amount-display">¥{{ quickForm.amount || '0' }}</div>
+              <div class="amount-buttons">
+                <van-button size="small" plain @click="addAmount(100)">+100</van-button>
+                <van-button size="small" plain @click="addAmount(200)">+200</van-button>
+                <van-button size="small" plain @click="addAmount(500)">+500</van-button>
+                <van-button size="small" plain @click="addAmount(1000)">+1000</van-button>
+              </div>
+              <van-field
+                v-model="quickForm.amount"
+                type="number"
+                placeholder="输入金额"
+                autofocus
+              >
+                <template #button>
+                  <van-icon 
+                    v-if="speechSupported"
+                    name="guide-o" 
+                    @click="startVoiceInput"
+                    :class="{ 'voice-active': isListening }"
+                    title="语音输入金额"
+                  />
+                </template>
+              </van-field>
+            </div>
+
+            <!-- 类型选择 -->
+            <van-radio-group v-model="quickForm.type" direction="horizontal" class="type-selector">
+              <van-radio name="expense">支出</van-radio>
+              <van-radio name="income">收入</van-radio>
+            </van-radio-group>
+
+            <!-- 姓名输入 -->
+            <van-field
+              v-model="quickForm.name"
+              placeholder="对方姓名（可选）"
+              clearable
+            />
+
+            <!-- 备注输入 -->
+            <van-field
+              v-model="quickForm.note"
+              type="textarea"
+              placeholder="备注（可选，如：婚礼、生日等）"
+              rows="2"
+              autosize
+            />
+
+            <!-- 提交按钮 -->
+            <van-button
+              round
+              block
+              type="primary"
+              @click="submitQuickRecord"
+              :loading="quickSubmitting"
+              class="submit-btn"
+            >
+              保存
+            </van-button>
+          </div>
+        </div>
+      </van-popup>
     </div>
   </Layout>
 </template>
@@ -109,6 +196,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { showToast } from "vant";
+import dayjs from "dayjs";
 import Layout from "../components/Layout.vue";
 import RecordList from "../components/RecordList.vue";
 import { recordAPI } from "../database/recordAPI";
@@ -122,9 +210,23 @@ const recentRecords = ref([]);
 const persons = ref([]);
 const categories = ref([]);
 const backupReminderShow = ref(false);
+const showQuickRecord = ref(false);
+const quickSubmitting = ref(false);
+const speechSupported = ref(false);
+const isListening = ref(false);
+let recognition = null;
+
+// 快速记账表单
+const quickForm = ref({
+  type: 'expense',
+  amount: '',
+  name: '',
+  note: ''
+});
 
 onMounted(async () => {
   await loadData();
+  initSpeechRecognition();
 
   const reminderDismissed = localStorage.getItem("backup_reminder_dismissed");
   const dismissedTime = reminderDismissed ? new Date(reminderDismissed) : null;
@@ -183,6 +285,128 @@ async function handleExportBackup() {
 function handleDismissReminder() {
   localStorage.setItem("backup_reminder_dismissed", new Date().toISOString());
   backupReminderShow.value = false;
+}
+
+// 快速记账相关函数
+function addAmount(value) {
+  const current = parseFloat(quickForm.value.amount) || 0;
+  quickForm.value.amount = (current + value).toString();
+}
+
+// 初始化语音识别
+function initSpeechRecognition() {
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      // 提取数字
+      const numbers = transcript.match(/\d+/);
+      if (numbers) {
+        quickForm.value.amount = numbers[0];
+        showToast(`识别到: ${numbers[0]}元`);
+      } else {
+        showToast('未识别到数字');
+      }
+      isListening.value = false;
+    };
+
+    recognition.onerror = () => {
+      showToast('语音识别失败');
+      isListening.value = false;
+    };
+
+    recognition.onend = () => {
+      isListening.value = false;
+    };
+
+    speechSupported.value = true;
+  }
+}
+
+// 开始语音输入
+function startVoiceInput() {
+  if (!recognition) {
+    initSpeechRecognition();
+  }
+
+  if (isListening.value) {
+    recognition.stop();
+    isListening.value = false;
+  } else {
+    try {
+      recognition.start();
+      isListening.value = true;
+      showToast('请说出金额');
+    } catch (error) {
+      showToast('语音识别启动失败');
+    }
+  }
+}
+
+async function submitQuickRecord() {
+  try {
+    if (!quickForm.value.amount || parseFloat(quickForm.value.amount) <= 0) {
+      showToast('请输入有效金额');
+      return;
+    }
+
+    quickSubmitting.value = true;
+
+    // 获取默认分类（如果没有则创建）
+    let categoryId = null;
+    const defaultCategoryName = quickForm.value.type === 'expense' ? '其他支出' : '其他收入';
+    let category = categories.value.find(c => c.name === defaultCategoryName && c.type === quickForm.value.type);
+    
+    if (!category) {
+      // 创建默认分类
+      const newCategory = await categoryAPI.add({
+        name: defaultCategoryName,
+        type: quickForm.value.type
+      });
+      categoryId = newCategory.id;
+      await loadCategories();
+    } else {
+      categoryId = category.id;
+    }
+
+    // 保存记录
+    await recordAPI.add({
+      type: quickForm.value.type,
+      amount: parseFloat(quickForm.value.amount),
+      name: quickForm.value.name.trim() || '未命名',
+      relationshipId: null,
+      categoryId: categoryId,
+      date: dayjs().format('YYYY-MM-DD'),
+      note: quickForm.value.note.trim()
+    });
+
+    showToast('保存成功');
+
+    // 更新轻量备份
+    backupAPI.createLightweightBackup();
+
+    // 重置表单并关闭弹窗
+    quickForm.value = {
+      type: 'expense',
+      amount: '',
+      name: '',
+      note: ''
+    };
+    showQuickRecord.value = false;
+
+    // 刷新首页数据
+    await loadData();
+  } catch (error) {
+    console.error('快速记账失败:', error);
+    showToast('保存失败');
+  } finally {
+    quickSubmitting.value = false;
+  }
 }
 </script>
 
@@ -325,6 +549,14 @@ function handleDismissReminder() {
   );
 }
 
+.quick-card.quick {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 193, 7, 0.16),
+    rgba(255, 152, 0, 0.18)
+  );
+}
+
 .quick-card:active {
   transform: scale(0.98);
 }
@@ -359,6 +591,81 @@ function handleDismissReminder() {
 .backup-reminder-content p {
   margin: 8px 0;
   color: #687393;
+}
+
+/* 快速记账弹窗样式 */
+.quick-record-modal {
+  padding-bottom: 20px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #323233;
+}
+
+.modal-header .van-icon {
+  font-size: 20px;
+  color: #969799;
+  cursor: pointer;
+}
+
+.amount-section {
+  margin-bottom: 20px;
+}
+
+.amount-display {
+  font-size: 48px;
+  font-weight: bold;
+  color: #ee0a24;
+  text-align: center;
+  margin-bottom: 16px;
+  min-height: 60px;
+}
+
+.amount-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.amount-buttons .van-button {
+  height: 36px;
+  font-size: 14px;
+}
+
+.voice-active {
+  color: #ee0a24;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.type-selector {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.submit-btn {
+  margin-top: 20px;
 }
 
 @media (max-width: 420px) {
